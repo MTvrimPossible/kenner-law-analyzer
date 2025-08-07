@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kenner's Law Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .tab-button.active {
+            border-color: #4f46e5;
+            color: #4f46e5;
+            background-color: #eef2ff;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #4f46e5;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .heatmap-container {
+            display: flex;
+            width: 100%;
+            height: 100px;
+            background-color: #e5e7eb;
+        }
+        .heatmap-segment {
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Kenner's Law</h1>
+            <p class="text-lg text-gray-600 mt-2">Analyze the lexical diversity of your texts.</p>
+        </header>
+
+        <!-- File Upload Section -->
+        <div id="upload-section" class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <div id="drop-zone" class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                    <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                    <p class="text-xs text-gray-500">PDF or TXT files</p>
+                </div>
+                <input id="file-input" type="file" class="hidden" accept=".pdf,.txt">
+            </div>
+            <div id="file-name" class="mt-4 text-center text-gray-600"></div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loading-section" class="hidden text-center my-8">
+            <div class="loader mx-auto"></div>
+            <p class="mt-4 text-lg text-gray-600">Analyzing text... This may take a moment for large files.</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="hidden mt-10">
+            <div class="max-w-5xl mx-auto">
+                <!-- Tabs -->
+                <div class="border-b border-gray-200 mb-6">
+                    <nav class="-mb-px flex space-x-4" aria-label="Tabs">
+                        <button class="tab-button active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="graph">Kenner's Law Graph</button>
+                        <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="list">Word Frequency</button>
+                        <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="distribution">Word Distribution</button>
+                        <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="heatmap">Distribution Heatmap</button>
+                        <button class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300" data-tab="export">Export PDF</button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div id="tab-content" class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <div id="graph-content">
+                        <h3 class="text-xl font-semibold mb-1">Cumulative Word Frequency vs. Kenner's 40-40 Rule</h3>
+                        <p id="graph-summary" class="text-gray-600 mb-4"></p>
+                        <canvas id="kenner-chart"></canvas>
+                    </div>
+                    <div id="list-content" class="hidden">
+                        <h3 class="text-xl font-semibold mb-4">Full Word List & Counts</h3>
+                        <div class="h-96 overflow-y-auto border rounded-lg">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Word</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Count</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Word %</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cumulative %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="word-list-table" class="bg-white divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="distribution-content" class="hidden">
+                         <h3 class="text-xl font-semibold mb-2">Word Distribution</h3>
+                         <p class="text-gray-600 mb-4">This block represents the entire text. Each word is colored based on its frequency rank (Red=most frequent, Violet=least frequent).</p>
+                         <div id="distribution-legend" class="flex flex-wrap gap-x-4 gap-y-2 mb-4"></div>
+                         <div id="distribution-visualization" class="w-full bg-gray-100 rounded-lg p-1 h-48 overflow-y-auto" style="line-height: 0.8; font-size: 16px; font-family: monospace; word-break: break-all; letter-spacing: -2px;"></div>
+                    </div>
+                    <div id="heatmap-content" class="hidden">
+                         <h3 class="text-xl font-semibold mb-2">Top 40 Word Density Heatmap</h3>
+                         <p class="text-gray-600 mb-4">This heatmap shows the concentration of the top 40 most frequent words across the text. Red areas are "hot" (high density), and blue areas are "cold" (low density).</p>
+                         <div id="heatmap-visualization" class="heatmap-container rounded-lg"></div>
+                    </div>
+                    <div id="export-content" class="hidden">
+                        <h3 class="text-xl font-semibold mb-4">Export Colorized PDF</h3>
+                        <p class="text-gray-600 mb-6">Generate a PDF of the original text with a black background. Words are colored based on their frequency, from Red (most common) to Violet (least common), following the ROYGBIV spectrum.</p>
+                        <button id="export-pdf-button" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            Generate and Download PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script>
+        // --- DOM Element References ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileNameDisplay = document.getElementById('file-name');
+        const uploadSection = document.getElementById('upload-section');
+        const loadingSection = document.getElementById('loading-section');
+        const resultsSection = document.getElementById('results-section');
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const tabContents = {
+            graph: document.getElementById('graph-content'),
+            list: document.getElementById('list-content'),
+            distribution: document.getElementById('distribution-content'),
+            heatmap: document.getElementById('heatmap-content'),
+            export: document.getElementById('export-content'),
+        };
+        const exportPdfButton = document.getElementById('export-pdf-button');
+
+        // --- Global State ---
+        let analysisResults = null;
+        let originalTokens = null;
+        let kennerChartInstance = null;
+        let uploadedFile = null;
+        
+        // --- PDF.js Worker Configuration ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+
+        // --- Event Listeners ---
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-indigo-600', 'bg-indigo-50');
+        });
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-600', 'bg-indigo-50');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-600', 'bg-indigo-50');
+            const files = e.dataTransfer.files;
+            if (files.length) {
+                handleFile(files[0]);
+            }
+        });
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files.length) {
+                handleFile(files[0]);
+            }
+        });
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                Object.values(tabContents).forEach(content => content.classList.add('hidden'));
+                button.classList.add('active');
+                tabContents[button.dataset.tab].classList.remove('hidden');
+            });
+        });
+
+        exportPdfButton.addEventListener('click', generateAndDownloadPdf);
+
+        // --- File Handling and Text Extraction ---
+        async function handleFile(file) {
+            if (!file) return;
+            uploadedFile = file;
+            
+            fileNameDisplay.textContent = `Selected file: ${file.name}`;
+            showLoading(true);
+            resultsSection.classList.add('hidden');
+
+            try {
+                let text = '';
+                if (file.type === 'text/plain') {
+                    text = await file.text();
+                } else if (file.name.endsWith('.pdf')) {
+                    text = await extractTextFromPdf(file);
+                } else {
+                    throw new Error('Unsupported file type. Please upload a PDF or TXT file.');
+                }
+                
+                processText(text);
+
+            } catch (error) {
+                console.error('Error processing file:', error);
+                fileNameDisplay.textContent = `Error: ${error.message}. Please try another file.`;
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function showLoading(isLoading) {
+            loadingSection.classList.toggle('hidden', !isLoading);
+            uploadSection.classList.toggle('hidden', isLoading);
+        }
+
+        async function extractTextFromPdf(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            const numPages = pdf.numPages;
+            const pageContents = [];
+            const lineCounts = new Map();
+            const headerFooterCandidates = new Set();
+
+            for (let i = 1; i <= numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const lines = textContent.items.map(item => item.str);
+                pageContents.push(lines);
+
+                if (numPages > 2) {
+                    const topLines = lines.slice(0, 3).join(' ').trim();
+                    const bottomLines = lines.slice(-3).join(' ').trim();
+                    if (topLines) lineCounts.set(topLines, (lineCounts.get(topLines) || 0) + 1);
+                    if (bottomLines) lineCounts.set(bottomLines, (lineCounts.get(bottomLines) || 0) + 1);
+                }
+            }
+
+            const headerFooterThreshold = Math.max(2, Math.floor(numPages * 0.5));
+            if (numPages > 2) {
+                for (const [line, count] of lineCounts.entries()) {
+                    if (count > headerFooterThreshold) {
+                        headerFooterCandidates.add(line);
+                    }
+                }
+            }
+
+            let fullText = '';
+            for (const lines of pageContents) {
+                const topLinesStr = lines.slice(0, 3).join(' ').trim();
+                const bottomLinesStr = lines.slice(-3).join(' ').trim();
+                let startIndex = 0;
+                let endIndex = lines.length;
+                if (headerFooterCandidates.has(topLinesStr)) startIndex = 3;
+                if (headerFooterCandidates.has(bottomLinesStr)) endIndex = lines.length - 3;
+                fullText += lines.slice(startIndex, endIndex).join(' ') + ' ';
+            }
+            return fullText;
+        }
+
+        // --- Text Analysis ---
+        function processText(text) {
+            originalTokens = text.split(/\s+/).filter(Boolean);
+            const words = text.toLowerCase().match(/[a-z']+/g) || [];
+            
+            if (words.length === 0) {
+                fileNameDisplay.textContent = "Could not find any words in the document.";
+                return;
+            }
+
+            const wordCounts = words.reduce((acc, word) => {
+                acc[word] = (acc[word] || 0) + 1;
+                return acc;
+            }, {});
+
+            const sortedWords = Object.entries(wordCounts).sort(([, a], [, b]) => b - a);
+
+            const totalWords = words.length;
+            let cumulativeCount = 0;
+            analysisResults = sortedWords.map(([word, count], index) => {
+                cumulativeCount += count;
+                return {
+                    rank: index + 1,
+                    word,
+                    count,
+                    percent: (count / totalWords) * 100,
+                    cumulativePercent: (cumulativeCount / totalWords) * 100,
+                };
+            });
+
+            displayResults();
+        }
+
+        // --- Display Logic ---
+        function displayResults() {
+            resultsSection.classList.remove('hidden');
+            uploadSection.classList.add('hidden');
+            
+            tabButtons.forEach((btn, index) => btn.classList.toggle('active', index === 0));
+            Object.values(tabContents).forEach((content, index) => content.classList.toggle('hidden', index !== 0));
+
+            displayKennerGraph();
+            displayWordList();
+            displayDistribution();
+            displayHeatmap();
+        }
+
+        function displayKennerGraph() {
+            const ctx = document.getElementById('kenner-chart').getContext('2d');
+            const data = analysisResults.map(item => item.cumulativePercent);
+            const top40Percent = analysisResults.length >= 40 ? analysisResults[39].cumulativePercent : data[data.length - 1];
+            
+            document.getElementById('graph-summary').innerHTML = `
+                Total Words: <span class="font-semibold text-indigo-600">${originalTokens.length.toLocaleString()}</span> | 
+                Unique Words: <span class="font-semibold text-indigo-600">${analysisResults.length.toLocaleString()}</span> | 
+                Top 40 Words Cover: <span class="font-semibold text-indigo-600">${top40Percent.toFixed(2)}%</span> of the text.
+            `;
+
+            if (kennerChartInstance) kennerChartInstance.destroy();
+
+            kennerChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: analysisResults.map(item => item.rank),
+                    datasets: [{
+                        label: 'Cumulative Word %', data, borderColor: '#4f46e5',
+                        backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, pointRadius: 0, tension: 0.1,
+                    }, {
+                        label: "Kenner's 40-40 Rule", data: [{x: 1, y: 1}, {x: 40, y: 40}],
+                        borderColor: '#db2777', borderDash: [5, 5], fill: false, pointRadius: 0, type: 'line', tension: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'Word Rank (Most Frequent to Least)' }, max: Math.min(200, analysisResults.length) },
+                        y: { title: { display: true, text: 'Cumulative Percentage of Text' }, min: 0, max: 100 }
+                    },
+                    plugins: { tooltip: { mode: 'index', intersect: false } }
+                }
+            });
+        }
+
+        function displayWordList() {
+            const tableBody = document.getElementById('word-list-table');
+            tableBody.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            analysisResults.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.rank}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.word}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count.toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.percent.toFixed(4)}%</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.cumulativePercent.toFixed(2)}%</td>
+                `;
+                fragment.appendChild(row);
+            });
+            tableBody.appendChild(fragment);
+        }
+        
+        function displayDistribution() {
+            const visualization = document.getElementById('distribution-visualization');
+            const legend = document.getElementById('distribution-legend');
+            visualization.innerHTML = '';
+            legend.innerHTML = '';
+
+            const top40WordsForLegend = new Map(analysisResults.slice(0, 40).map(item => [item.word, {rank: item.rank, color: getRankColor(item.rank, 40)}]));
+            top40WordsForLegend.forEach((data, word) => {
+                const legendItem = document.createElement('span');
+                legendItem.className = 'flex items-center text-xs';
+                legendItem.innerHTML = `<span class="w-3 h-3 rounded-full mr-1.5" style="background-color: ${data.color};"></span> ${word}`;
+                legend.appendChild(legendItem);
+            });
+
+            const wordColorMap = new Map();
+            const uniqueWordCount = analysisResults.length;
+            const colors = ['#FF0000', '#FFA500', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#EE82EE'];
+            analysisResults.forEach(({ word, rank }) => {
+                const percentile = rank / uniqueWordCount;
+                let colorIndex = Math.floor(percentile * colors.length);
+                if (colorIndex >= colors.length) colorIndex = colors.length - 1;
+                wordColorMap.set(word, colors[colorIndex]);
+            });
+
+            const fragment = document.createDocumentFragment();
+            const normalizedTokens = originalTokens.map(token => token.toLowerCase().replace(/[^a-z']+/g, ''));
+            
+            normalizedTokens.forEach(token => {
+                if (wordColorMap.has(token)) {
+                    const color = wordColorMap.get(token);
+                    const mark = document.createElement('span');
+                    mark.style.color = color;
+                    mark.textContent = '█';
+                    mark.title = token;
+                    fragment.appendChild(mark);
+                } else {
+                    fragment.appendChild(document.createTextNode(' '));
+                }
+            });
+            visualization.appendChild(fragment);
+        }
+
+        function displayHeatmap() {
+            const visualization = document.getElementById('heatmap-visualization');
+            visualization.innerHTML = '';
+
+            const top40WordSet = new Set(analysisResults.slice(0, 40).map(item => item.word));
+            const numSegments = 200;
+            const segmentSize = Math.ceil(originalTokens.length / numSegments);
+            const densities = [];
+            let maxDensity = 0;
+
+            for (let i = 0; i < numSegments; i++) {
+                const start = i * segmentSize;
+                const end = start + segmentSize;
+                const segmentTokens = originalTokens.slice(start, end);
+                if (segmentTokens.length === 0) {
+                    densities.push(0);
+                    continue;
+                }
+
+                let topWordCount = 0;
+                for (const token of segmentTokens) {
+                    if (top40WordSet.has(token.toLowerCase().replace(/[^a-z']+/g, ''))) {
+                        topWordCount++;
+                    }
+                }
+                const density = topWordCount / segmentTokens.length;
+                densities.push(density);
+                if (density > maxDensity) {
+                    maxDensity = density;
+                }
+            }
+
+            const fragment = document.createDocumentFragment();
+            densities.forEach(density => {
+                const segmentDiv = document.createElement('div');
+                segmentDiv.className = 'heatmap-segment';
+                segmentDiv.style.width = `${100 / numSegments}%`;
+                const hue = 240 * (1 - (density / (maxDensity || 1)));
+                segmentDiv.style.backgroundColor = `hsl(${hue}, 90%, 55%)`;
+                fragment.appendChild(segmentDiv);
+            });
+            visualization.appendChild(fragment);
+        }
+
+        function getRankColor(rank, maxRank) {
+            const hue = 0 + (rank / maxRank) * 240;
+            return `hsl(${hue}, 90%, 55%)`;
+        }
+
+        // --- PDF Export ---
+        async function generateAndDownloadPdf() {
+            if (!analysisResults) return;
+            
+            const button = exportPdfButton;
+            button.disabled = true;
+            button.innerHTML = '<div class="loader !w-5 !h-5 !border-2 mr-2"></div> Generating...';
+
+            setTimeout(async () => {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
+                    
+                    const wordColorMap = new Map();
+                    const uniqueWordCount = analysisResults.length;
+                    const colors = ['#FF0000', '#FFA500', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#EE82EE'];
+                    analysisResults.forEach(({ word, rank }) => {
+                        const percentile = rank / uniqueWordCount;
+                        let colorIndex = Math.floor(percentile * colors.length);
+                        if (colorIndex >= colors.length) colorIndex = colors.length - 1;
+                        wordColorMap.set(word, colors[colorIndex]);
+                    });
+
+                    createGuidePage(doc, colors);
+                    createFlowingTextPdf(doc, wordColorMap);
+                    
+                    const originalFileName = uploadedFile ? uploadedFile.name : 'document.txt';
+                    const lastDotIndex = originalFileName.lastIndexOf('.');
+                    const nameWithoutExtension = lastDotIndex === -1 ? originalFileName : originalFileName.substring(0, lastDotIndex);
+                    const newFileName = `Colorized - ${nameWithoutExtension}.pdf`;
+                    doc.save(newFileName);
+
+                } catch (error) {
+                    console.error("PDF Generation Error:", error);
+                    alert("Failed to generate PDF. The text might be too large.");
+                } finally {
+                    button.disabled = false;
+                    button.innerHTML = '<svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>Generate and Download PDF';
+                }
+            }, 100);
+        }
+
+        function createGuidePage(doc, colors) {
+            const page_width = doc.internal.pageSize.width;
+            const margin = 15;
+            doc.setFillColor(0, 0, 0);
+            doc.rect(0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height, 'F');
+            
+            doc.setTextColor('#FFFFFF');
+            doc.setFontSize(18);
+            doc.text("Color Guide & Analysis Summary", page_width / 2, 20, { align: 'center' });
+
+            doc.setFontSize(12);
+            const top40Percent = analysisResults.length >= 40 ? analysisResults[39].cumulativePercent : analysisResults[analysisResults.length-1].cumulativePercent;
+            const summaryText = `
+                Total Words Analyzed: ${originalTokens.length.toLocaleString()}
+                Unique Words Found: ${analysisResults.length.toLocaleString()}
+                Top 40 Words Coverage: ${top40Percent.toFixed(2)}%
+            `;
+            doc.text(summaryText.trim(), margin, 40);
+
+            const colorLabels = [
+                'Most Frequent (Red)', 'Very Frequent (Orange)', 'Frequent (Yellow)',
+                'Common (Green)', 'Uncommon (Blue)', 'Rare (Indigo)', 'Very Rare (Violet)'
+            ];
+
+            let yPos = 80;
+            doc.setFontSize(10);
+            doc.text("Word Frequency Color Scale (ROYGBIV):", margin, yPos - 10);
+            
+            colors.forEach((color, index) => {
+                doc.setFillColor(color);
+                doc.rect(margin, yPos, 10, 10, 'F');
+                doc.setTextColor('#FFFFFF');
+                doc.text(colorLabels[index], margin + 15, yPos + 8);
+                yPos += 15;
+            });
+        }
+
+        function createFlowingTextPdf(doc, wordColorMap) {
+            doc.addPage();
+            doc.setFillColor(0, 0, 0);
+            doc.rect(0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height, 'F');
+            
+            const margin = 15;
+            doc.setFontSize(10);
+            let x = margin;
+            let y = margin;
+            const lineHeight = 5;
+            const page_width = doc.internal.pageSize.width;
+
+            for (const token of originalTokens) {
+                const normalizedWord = token.toLowerCase().match(/[a-z']+/g)?.[0];
+                const color = wordColorMap.get(normalizedWord) || '#FFFFFF';
+                
+                const wordWidth = doc.getStringUnitWidth(token) * doc.getFontSize() / doc.internal.scaleFactor;
+                
+                if (x + wordWidth + 2 > page_width - margin) {
+                    x = margin;
+                    y += lineHeight;
+                    if (y > doc.internal.pageSize.height - margin) {
+                        doc.addPage();
+                        doc.setFillColor(0, 0, 0);
+                        doc.rect(0, 0, doc.internal.pageSize.width, doc.internal.pageSize.height, 'F');
+                        y = margin;
+                    }
+                }
+                
+                doc.setTextColor(color);
+                doc.text(token, x, y);
+                x += wordWidth + (doc.getStringUnitWidth(' ') * doc.getFontSize() / doc.internal.scaleFactor);
+            }
+        }
+
+    </script>
+</body>
+</html>
